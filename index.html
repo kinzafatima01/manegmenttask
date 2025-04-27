@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super To-Do List</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body {
+      background-color: #f4f6f9;
+    }
+    .todo-container {
+      max-width: 900px;
+      margin: 50px auto;
+    }
+    .todo-list {
+      padding: 10px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .todo-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: #fff;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      cursor: move;
+      position: relative;
+    }
+    .todo-item.done {
+      text-decoration: line-through;
+      background-color: #e0e0e0;
+    }
+    .todo-item.inprogress {
+      background-color: #fff3cd;
+    }
+    .todo-item.important {
+      background-color: #f8d7da;
+      border-color: #f5c6cb;
+    }
+    .priority-high {
+      border-left: 5px solid red;
+    }
+    .priority-medium {
+      border-left: 5px solid yellow;
+    }
+    .priority-low {
+      border-left: 5px solid green;
+    }
+    .collapse-btn {
+      cursor: pointer;
+      margin: 5px 0;
+    }
+    .status-label {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-weight: bold;
+      background-color: #28a745;
+      color: white;
+      padding: 5px;
+      border-radius: 3px;
+      display: none;
+    }
+    .status-label.inprogress {
+      background-color: #ffc107;
+    }
+    .status-label.done {
+      background-color: #007bff;
+    }
+  </style>
+</head>
+<body>
+  <div class="todo-container">
+    <h2 class="text-center mb-4">Super To-Do List</h2>
+
+    <!-- Add Task Form -->
+    <div class="input-group mb-3">
+      <input type="text" class="form-control" id="todoInput" placeholder="Add a new task">
+      <button class="btn btn-primary" id="addButton">Add</button>
+    </div>
+
+    <!-- Search Task -->
+    <div class="mb-3">
+      <input type="text" class="form-control" id="searchInput" placeholder="Search tasks...">
+    </div>
+
+    <!-- Statistics Section -->
+    <div id="statistics">
+      <p id="statistics-text"></p>
+    </div>
+
+    <!-- Task Lists with Collapsibility -->
+    <div class="todo-list" id="inProgressList">
+      <button class="btn btn-outline-secondary collapse-btn" id="toggleInProgress">Collapse</button>
+      <h4>In Progress</h4>
+      <ul class="list-group" id="todoListInProgress"></ul>
+    </div>
+
+    <div class="todo-list" id="doneList">
+      <button class="btn btn-outline-secondary collapse-btn" id="toggleDone">Collapse</button>
+      <h4>Done</h4>
+      <ul class="list-group" id="todoListDone"></ul>
+    </div>
+
+    <!-- Clear Completed Tasks -->
+    <button class="btn btn-danger" id="clearDoneButton">Clear All Done</button>
+  </div>
+
+  <script>
+    const addButton = document.getElementById('addButton');
+    const todoInput = document.getElementById('todoInput');
+    const searchInput = document.getElementById('searchInput');
+    const todoListInProgress = document.getElementById('todoListInProgress');
+    const todoListDone = document.getElementById('todoListDone');
+    const clearDoneButton = document.getElementById('clearDoneButton');
+    const toggleInProgress = document.getElementById('toggleInProgress');
+    const toggleDone = document.getElementById('toggleDone');
+    const statisticsText = document.getElementById('statistics-text');
+
+    let tasks = JSON.parse(localStorage.getItem('tasks')) || { inprogress: [], done: [] };
+    window.onload = function() {
+      renderTasks();
+    };
+
+    // Add new task
+    addButton.addEventListener('click', function () {
+      const taskText = todoInput.value.trim();
+      if (taskText === '') return;
+
+      const task = {
+        text: taskText,
+        status: 'inprogress',
+        important: false,
+        priority: 'low',
+        color: prompt('Choose task color (red, green, blue, etc.):'),
+        comments: [],
+        isRecurring: false
+      };
+
+      saveTask(task);
+      todoInput.value = '';
+      renderTasks();
+    });
+
+    // Search functionality
+    searchInput.addEventListener('input', function () {
+      renderTasks(searchInput.value);
+    });
+
+    // Clear completed tasks
+    clearDoneButton.addEventListener('click', function () {
+      tasks.done = [];
+      saveTasksToLocal();
+      renderTasks();
+    });
+
+    // Task reordering (drag and drop)
+    let draggedTask = null;
+    function enableDragAndDrop() {
+      const taskItems = document.querySelectorAll('.todo-item');
+      taskItems.forEach(item => {
+        item.setAttribute('draggable', true);
+        item.addEventListener('dragstart', function () {
+          draggedTask = item;
+        });
+        item.addEventListener('dragover', function (event) {
+          event.preventDefault();
+        });
+        item.addEventListener('drop', function () {
+          const taskList = item.closest('ul');
+          taskList.insertBefore(draggedTask, item);
+          saveTasksToLocal();
+        });
+      });
+    }
+
+    // Render tasks
+    function renderTasks(filter = '') {
+      // Clear previous lists
+      todoListInProgress.innerHTML = '';
+      todoListDone.innerHTML = '';
+
+      // Filter tasks by search term
+      const filteredInProgress = tasks.inprogress.filter(task => task.text.toLowerCase().includes(filter.toLowerCase()));
+      const filteredDone = tasks.done.filter(task => task.text.toLowerCase().includes(filter.toLowerCase()));
+
+      filteredInProgress.forEach(task => addTaskToList(task, 'inprogress'));
+      filteredDone.forEach(task => addTaskToList(task, 'done'));
+
+      updateStatistics();
+      enableDragAndDrop();
+    }
+
+    // Add task to list
+    function addTaskToList(task, status) {
+      const li = document.createElement('li');
+      li.classList.add('todo-item', 'list-group-item', task.status);
+      li.classList.add(getPriorityClass(task.priority));
+      li.innerHTML = `
+        <span class="task-text" style="background-color: ${task.color || 'transparent'}">${task.text}</span>
+        <button class="btn btn-warning btn-sm mark-done-btn">Mark as Done</button>
+        <button class="btn btn-danger btn-sm delete-btn">Delete</button>
+        <button class="btn btn-info btn-sm mark-important-btn">Important</button>
+        <button class="btn btn-secondary btn-sm edit-btn">Edit</button>
+        <button class="btn btn-primary btn-sm comment-btn">Add Comment</button>
+        <div class="comment-section">
+          ${task.comments.map(comment => `<div class="alert alert-info">${comment}</div>`).join('')}
+        </div>
+      `;
+      const statusLabel = document.createElement('div');
+      statusLabel.classList.add('status-label');
+      statusLabel.textContent = task.status === 'inprogress' ? 'In Progress' : 'Done';
+      statusLabel.classList.add(task.status);
+      li.appendChild(statusLabel);
+
+      const markDoneButton = li.querySelector('.mark-done-btn');
+      const deleteButton = li.querySelector('.delete-btn');
+      const markImportantButton = li.querySelector('.mark-important-btn');
+      const editButton = li.querySelector('.edit-btn');
+      const commentButton = li.querySelector('.comment-btn');
+
+      // Mark as Done
+      markDoneButton.addEventListener('click', function () {
+        task.status = task.status === 'inprogress' ? 'done' : 'inprogress';
+        saveTasksToLocal();
+        renderTasks();
+      });
+
+      // Delete task
+      deleteButton.addEventListener('click', function () {
+        tasks[task.status].splice(tasks[task.status].indexOf(task), 1);
+        saveTasksToLocal();
+        renderTasks();
+      });
+
+      // Mark as Important
+      markImportantButton.addEventListener('click', function () {
+        task.important = !task.important;
+        saveTasksToLocal();
+        renderTasks();
+      });
+
+      // Edit task
+      editButton.addEventListener('click', function () {
+        const newText = prompt('Edit task:', task.text);
+        if (newText) {
+          task.text = newText;
+          saveTasksToLocal();
+          renderTasks();
+        }
+      });
+
+      // Add comment
+      commentButton.addEventListener('click', function () {
+        const comment = prompt('Enter your comment:');
+        if (comment) {
+          task.comments.push(comment);
+          saveTasksToLocal();
+          renderTasks();
+        }
+      });
+
+      if (status === 'inprogress') {
+        todoListInProgress.appendChild(li);
+      } else {
+        todoListDone.appendChild(li);
+      }
+    }
+
+    // Save tasks to localStorage
+    function saveTasksToLocal() {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    // Get priority class for styling
+    function getPriorityClass(priority) {
+      switch (priority) {
+        case 'high': return 'priority-high';
+        case 'medium': return 'priority-medium';
+        case 'low': return 'priority-low';
+        default: return '';
+      }
+    }
+
+    // Update statistics
+    function updateStatistics() {
+      const inProgressCount = tasks.inprogress.length;
+      const doneCount = tasks.done.length;
+      statisticsText.innerHTML = `
+        <strong>Statistics:</strong> 
+        In Progress: ${inProgressCount} | 
+        Done: ${doneCount}
+      `;
+    }
+
+    // Collapse/Expand task sections
+    toggleInProgress.addEventListener('click', function () {
+      const list = document.getElementById('inProgressList');
+      list.classList.toggle('collapsed');
+      toggleInProgress.textContent = list.classList.contains('collapsed') ? 'Expand' : 'Collapse';
+    });
+
+    toggleDone.addEventListener('click', function () {
+      const list = document.getElementById('doneList');
+      list.classList.toggle('collapsed');
+      toggleDone.textContent = list.classList.contains('collapsed') ? 'Expand' : 'Collapse';
+    });
+  </script>
+</body>
+</html>
